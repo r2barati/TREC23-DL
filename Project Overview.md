@@ -124,9 +124,7 @@ Section 1 -- What's New in TREC 2023
 
   1.  The active participants section of the Web site has a new login/password sequence (case is significant).
 
-        login:    trec2023
-
-        password: 32FootstepS
+     
 
  
 
