@@ -3,58 +3,21 @@
 The approach we took in developing the code for the Training Phase of TREC 2023 Deep Learning Track's passage ranking task was carefully 
 considered to meet the specific requirements and objectives of the project. Here are the reasons behind the decisions we made:
 
-1. **Task Compatibility**: Our primary goal was to create a system capable of ranking passages based on their relevance to a given query.
-This is directly aligned with the objectives of both the full ranking and reranking subtasks for the passage ranking task of the 2023 Deep Learning track.
-To achieve this, we designed our model to employ a transformer-based model, BERT, which is well-known for its excellent performance in
-various natural language processing (NLP) tasks, including text classification and relevance ranking.
+1. **Requirements and Initial Setup**: The task at hand was part of the passage ranking task in the Training Phase of the TREC 2023 Deep Learning Track. We were provided with three files: query, qrels (which contained relevance information), and top100 (which contained the top 100 documents for each query). The goal was to create a machine learning model to rank the passages in terms of their relevance to the given queries. The main focus was on two subtasks: full ranking and top-100 reranking. 
 
-2. **Employing BERT**: We chose to use BERT because it has been pre-trained on a large corpus of text data and has a proven track record of
-understanding the contextual meaning of words in a sentence. This made it a perfect fit for assessing the relevance of a passage to a
-given query, which is the core requirement of our task. The line `model = BertForSequenceClassification.from_pretrained('bert-base-uncased')`
-in our code is where we employed BERT. We used the `BertForSequenceClassification` model, a variant of BERT specifically designed for
-classification tasks, and we loaded the pre-trained weights from `'bert-base-uncased'`.
+   For this task, we used Google Colab as our coding environment due to its easy integration with Google Drive for data storage and its free GPU resources. We used the transformers library from Hugging Face for accessing pre-trained models and tokenizers, and PyTorch for data handling and model training. 
 
-3. **Leveraging Transfer Learning**: Our approach leverages the power of transfer learning by utilizing a pre-trained BERT model as a
-starting point. This is a strategy encouraged in this TREC track description and it allowed us to save significant training time and
-computational resources, while also taking advantage of the strong language understanding capabilities already built into BERT.
+2. **Data Loading and Preparation**: Given the large size of the files, loading them into memory was a challenge. To overcome this, we implemented a chunk-based loading system where we read parts of the data into memory, performed necessary operations, and then freed up the memory for the next chunks.
 
-4. **Batch Training**: We realized that handling large amounts of data was a crucial aspect of this project. To effectively train our model on
-potentially large training data without running into memory issues, we implemented batch training using PyTorch's DataLoader.
-This ensured that our training process was both efficient and scalable. This is evident in the line
-`train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)`.
-Here, we specified a batch size of 16, meaning the model would be trained on 16 examples at a time.
-This approach helped us manage memory usage efficiently and made the training process scalable.
+3. **Model and Tokenizer Selection**: We selected the BERT model for its powerful ability to understand the context of text data. Specifically, we used the "bert-tiny" model to save computational resources, which is a smaller version of the BERT model but still retains a significant portion of its performance.
 
-5. **Data Preparation**: Understanding that our model needed the data in a specific format, we included steps in our code to process
-the data into a usable format. This included tokenizing the queries and passages and encoding them into input vectors that our model could process.
-The preparation of data involved several steps in our code. First, we read the data from the provided files using `pandas`' `read_csv` function.
-Then, we tokenized and encoded the queries and passages using BERT's tokenizer (`tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')`
-and `train_encodings = tokenizer(train_data['query'].text, train_data['doc_id'].text, truncation=True, padding=True, max_length=512)`).
+4. **Tokenization and Checkpointing**: Tokenizing the entire dataset at once was memory-intensive due to the size of the data. Therefore, we tokenized the data in chunks. To handle interruptions in the Google Colab session, we saved tokenized data to the disk after processing each chunk. This allowed us to resume from the last completed chunk instead of starting from scratch.
 
-6. **Flexibility**: We designed our model to be adaptable to both the full ranking and reranking tasks. For the full ranking task,
-we could feed the entire collection of Corpus passages into our model. For the reranking task, we tailored our model to accept only the
-top 100 passages provided by top 100 training batch. This flexibility allowed us to cater to the specific requirements of each subtask.
+5. **Data Preparation**: After tokenization, we converted the data into a PyTorch Dataset and used a DataLoader for batching during training.
 
-Finally, the actual training of our model happens in the training loop: 
+6. **Training**: During training, we saved model checkpoints after each epoch to protect against session terminations. This way, we could resume training from the last completed epoch instead of starting over.
 
-```
-for epoch in range(epochs):
-    for batch in train_dataloader:
-        # Move batch tensors to the same device as the model
-        batch = {k: v.to(device) for k, v in batch.items()}
-        outputs = model(**batch)
-        loss = outputs.loss
-        loss.backward()
-        optim.step()
-        optim.zero_grad()
-```
-
-In this loop, we iteratively update the weights of our model based on the training data. 
-This process is repeated for a specified number of epochs to improve the model's performance. 
-
-However, we recognized that the success of our approach wouldn't just depend on the model itself, but also on the quality of our training data 
-and the computational resources available to us. We also knew that to achieve optimal results, we might need to fine-tune various hyperparameters 
-such as the learning rate, batch size, and the number of training epochs.
+7. **Competitiveness of the Approach**: This approach is quite robust and efficient given the constraints. It effectively handles large datasets that cannot fit into memory all at once by processing data in chunks and storing intermediate results to disk. The use of a smaller pre-trained model (bert-tiny) allows us to leverage the power of BERT while reducing computational requirements. The checkpointing system ensures that our progress is saved regularly, allowing us to resume training even after interruptions. Moreover, this approach aligns with the track's encouragement of studying the efficacy of transfer learning methods. Thus, this approach is quite competitive for the given task and constraints.
 
 Looking forward, we identified potential improvements that could further enhance the performance of our model. 
 These include using an ensemble of models, employing more recent transformer models like RoBERTa or ELECTRA, or 
@@ -62,15 +25,14 @@ incorporating additional features into our model, such as query and passage leng
 We believed these enhancements could potentially give us an edge in the TREC 2023 Deep Learning Track.
 
 ```Python
-# Step 1
 !pip install transformers
 
-# Step 2 - 1: Mount the Google Drive
 from google.colab import drive
 drive.mount('/content/drive')
 
-# Step 3: Load the data
 import pandas as pd
+import gc  # For garbage collection
+import time  # For timing
 
 # Define column names
 query_cols = ['query_id', 'query']
@@ -78,25 +40,32 @@ top100_cols = ['query_id', 'Q0', 'doc_id', 'rank', 'score', 'run_id']
 qrels_cols = ['query_id', '0', 'doc_id', 'relevance']
 
 # Read the data from the TSV and TXT files
+start_time = time.time()
+
 train_queries = pd.read_csv('/content/drive/MyDrive/Colab/Deep/passv2_train_queries.tsv', sep='\t', names=query_cols, header=None)
 train_top100 = pd.read_csv('/content/drive/MyDrive/Colab/Deep/passv2_train_top100.txt', sep=' ', names=top100_cols, header=None)
 train_qrels = pd.read_csv('/content/drive/MyDrive/Colab/Deep/passv2_train_qrels.tsv', sep='\t', names=qrels_cols, header=None)
 
-# Print the first few rows to check the data
-print("Train queries data:\n", train_queries.head())
-print("Train top100 data:\n", train_top100.head())
-print("Train qrels data:\n", train_qrels.head())
+print("--- Data loading time: %s seconds ---" % (time.time() - start_time))
 
-# Step 4
+# Merge the two dataframes on 'query_id'
+merged = pd.merge(train_queries, train_top100, on='query_id')
+
+# Free up memory
+del train_queries
+del train_top100
+gc.collect()  # Force garbage collector to release unreferenced memory
+
 import torch
 from torch.utils.data import Dataset, DataLoader
-from transformers import BertTokenizer, BertForSequenceClassification, AdamW
+from transformers import BertTokenizer, BertForSequenceClassification
+from torch.optim import AdamW  # Use this import instead
 
 # Specify device
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 # Load model and move it to GPU
-model = BertForSequenceClassification.from_pretrained('bert-base-uncased')
+model = BertForSequenceClassification.from_pretrained('prajjwal1/bert-tiny')
 model.to(device)
 model.train()
 
@@ -104,29 +73,56 @@ model.train()
 optim = AdamW(model.parameters(), lr=5e-5)
 
 # Define tokenizer
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tokenizer = BertTokenizer.from_pretrained('prajjwal1/bert-tiny')
 
 # Specify the number of epochs
 epochs = 3
-
-# Merge the two dataframes on 'query_id'
-merged = pd.merge(train_queries, train_top100, on='query_id')
 
 # Break the data into smaller chunks and tokenize them one by one
 chunksize = 1000  # You may adjust this value based on your available memory
 train_encodings = []
 
-for i in range(0, len(merged), chunksize):
+start_time = time.time()
+
+last_processed_chunk = 0
+# Check if a file with the last processed chunk exists and if so, read the value
+try:
+    with open('/content/drive/MyDrive/Colab/Deep/last_processed_chunk.txt', 'r') as f:
+        last_processed_chunk = int(f.read())
+except FileNotFoundError:
+    pass
+
+# Start tokenization from the last processed chunk
+for i in range(last_processed_chunk, len(merged), chunksize):
     chunk = merged[i:i+chunksize]
     chunk_encodings = tokenizer(chunk['query'].tolist(), chunk['doc_id'].tolist(), truncation=True, padding=True, max_length=512)
-    train_encodings.append(chunk_encodings)
-    del chunk  # Delete the chunk to save memory
+    # Save encodings to disk, then delete the variable
+    torch.save(chunk_encodings, f'/content/drive/MyDrive/Colab/Deep/train_encodings_{i}.pt')
+    del chunk_encodings
+    gc.collect()  # Force garbage collector to release unreferenced memory
 
-# Concatenate all encodings
-train_encodings = {key: torch.cat([enc[key] for enc in train_encodings]) for key in train_encodings[0]}
+    # Update the last processed chunk
+    with open('/content/drive/MyDrive/Colab/Deep/last_processed_chunk.txt', 'w') as f:
+        f.write(str(i))
 
-# Define your labels (this step may change based on your specific case)
+print("--- Tokenization time: %s seconds ---" % (time.time() - start_time))
+
+# Defining labels 
 train_labels = train_qrels['relevance'].tolist()
+
+# Load each set of encodings from disk and concatenate
+start_time = time.time()
+
+for i in range(0, len(merged), chunksize):
+    chunk_encodings = torch.load(f'/content/drive/MyDrive/Colab/Deep/train_encodings_{i}.pt')
+    if i == 0:
+        train_encodings = chunk_encodings
+    else:
+        train_encodings = {key: torch.cat([train_encodings[key], chunk_encodings[key]]) for key in train_encodings}
+    del chunk_encodings
+    gc.collect()  # Force garbage collector to release unreferenced memory
+
+print("--- Encoding concatenation time: %s seconds ---" % (time.time() - start_time))
 
 # Convert to PyTorch Dataset
 train_dataset = TextDataset(train_encodings, train_labels)
@@ -135,6 +131,8 @@ train_dataset = TextDataset(train_encodings, train_labels)
 train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
 
 # Training loop
+start_time = time.time()
+
 for epoch in range(epochs):
     for batch in train_dataloader:
         # Move batch tensors to the same device as the model
@@ -146,6 +144,13 @@ for epoch in range(epochs):
 
         optim.step()
         optim.zero_grad()
+
+    # Save model after each epoch
+    checkpoint_dir = f'/content/drive/MyDrive/Colab/Deep/bert_checkpoints/epoch_{epoch}'
+    model.save_pretrained(checkpoint_dir)
+    print(f'Saved model checkpoint to {checkpoint_dir}')
+
+print("--- Training time: %s seconds ---" % (time.time() - start_time))
 
 model.eval()
 ```
