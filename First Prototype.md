@@ -59,7 +59,7 @@ gc.collect()  # Force garbage collector to release unreferenced memory
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer, BertForSequenceClassification
-from torch.optim import AdamW  # Use this import instead
+from torch.optim import AdamW  
 
 # Specify device
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -79,7 +79,7 @@ tokenizer = BertTokenizer.from_pretrained('prajjwal1/bert-tiny')
 epochs = 3
 
 # Break the data into smaller chunks and tokenize them one by one
-chunksize = 1000  # You may adjust this value based on your available memory
+chunksize = 1000  # Adjust this value based on your available memory
 train_encodings = []
 
 start_time = time.time()
